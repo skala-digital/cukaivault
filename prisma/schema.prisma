@@ -1,0 +1,123 @@
+// CukaiVault Prisma Schema
+// Local dev: SQLite — switch prisma.config.ts url to mysql:// for production
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ══════════════════════════════════════════════════════════════
+// TAX YEAR — historical record of LHDN filing rules per year
+// ══════════════════════════════════════════════════════════════
+model TaxYear {
+  id               String   @id @default(uuid())
+  year             Int      @unique // 2025, 2026, etc.
+  filingStartDate  DateTime // When e-filing opens (usually Mar 1)
+  filingEndDate    DateTime // When e-filing closes (usually Apr 30 for employed)
+  
+  // Tax brackets & relief caps stored as JSON for audit trail
+  taxBrackets      String   // JSON: [{max: 5000, rate: 0}, {max: 20000, rate: 0.01}, ...]
+  reliefCaps       String   // JSON: {LIFESTYLE: 2500, MEDICAL: 10000, ...}
+  
+  isActive         Boolean  @default(true) // Can users file for this year?
+  createdAt        DateTime @default(now())
+  
+  users            User[]
+  receipts         Receipt[]
+}
+
+model User {
+  id String @id @default(uuid())
+  phone String @unique
+  
+  // OAuth / Admin
+  email          String?  @unique
+  googleId       String?  @unique
+  isAdmin        Boolean  @default(false)
+
+  // Tax year context — which year is this user currently filing for?
+  currentTaxYearId String
+  currentTaxYear   TaxYear @relation(fields: [currentTaxYearId], references: [id])
+
+  // Profile
+  fullName       String?  // optional display name
+  isMuslim       Boolean  @default(true)
+  employmentType String   @default("EMPLOYED") // EMPLOYED | SELF_EMPLOYED
+
+  // Income
+  grossIncome    Decimal  @default(0)
+  totalReliefs   Decimal  @default(0) // computed, reflects receipts sum
+
+  // Profile-based reliefs (non-receipt)
+  epfContribution   Decimal @default(0) // cap RM4,000
+  lifeInsurance     Decimal @default(0) // life/takaful cap RM3,000
+  medicalInsurance  Decimal @default(0) // medical/edu insurance cap RM3,000
+  hasSpouseRelief   Boolean @default(false) // RM4,000 if spouse has no income
+  childrenUnder18   Int     @default(0)     // RM2,000 each
+  childrenTertiary  Int     @default(0)     // RM8,000 each
+
+  receipts     Receipt[]
+  transactions Transaction[]
+  createdAt    DateTime @default(now())
+}
+
+model Receipt {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  
+  taxYearId  String
+  taxYear    TaxYear  @relation(fields: [taxYearId], references: [id])
+  
+  amount     Decimal
+  category   String   // LHDN Relief category e.g. LIFESTYLE, MEDICAL
+  imageUrl   String?
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model Transaction {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  principalAmount Decimal  // Net amount to Zakat body / NGO
+  platformFee     Decimal  @default(1.50)
+  type            String   // ZAKAT_HARTA | DONATION_NGO
+  status          String   @default("INITIATED")
+  createdAt       DateTime @default(now())
+}
+
+model VaultEntry {
+  id         String   @id @default(uuid())
+  title      String
+  url        String   @unique
+  summary    String
+  source     String   @default("LHDN")     // LHDN | HASIL | OTHER
+  category   String   @default("GENERAL")  // GENERAL | RELIEF | RATE | DEADLINE
+  scrapedAt  DateTime @default(now())
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN — OAuth sessions and LHDN sync logs
+// ══════════════════════════════════════════════════════════════
+model AdminSession {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model SyncLog {
+  id          String   @id @default(uuid())
+  year        Int
+  status      String   // 'SUCCESS', 'FAILED', 'PARTIAL'
+  details     String   // JSON with errors/warnings or full rules
+  duration    Int      // milliseconds
+  triggeredBy String   // admin email
+  createdAt   DateTime @default(now())
+}

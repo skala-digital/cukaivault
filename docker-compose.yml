@@ -1,0 +1,44 @@
+services:
+  cukaivault:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cukaivault
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3010:3000"     # Nginx proxies cukaivault.my → localhost:3010
+    volumes:
+      - cukaivault_db:/app/prisma  # Persist SQLite database
+    env_file:
+      - .env.production
+    environment:
+      # Container-specific — override anything in .env.production
+      DATABASE_URL: "file:/app/prisma/prod.db"
+      OCR_SERVICE_URL: "http://cukaivault-ocr:8000"
+      NODE_ENV: "production"
+    depends_on:
+      - cukaivault-ocr
+    networks:
+      - cukaivault_net
+
+  cukaivault-ocr:
+    build:
+      context: ./ocr
+      dockerfile: Dockerfile.ocr
+    container_name: cukaivault-ocr
+    restart: unless-stopped
+    # Not exposed to host — only reachable from cukaivault via internal network
+    expose:
+      - "8000"
+    env_file:
+      - .env.production
+    networks:
+      - cukaivault_net
+
+volumes:
+  cukaivault_db:
+    driver: local
+
+networks:
+  cukaivault_net:
+    driver: bridge
