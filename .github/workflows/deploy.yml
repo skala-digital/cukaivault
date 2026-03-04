@@ -1,0 +1,109 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy CukaiVault to Production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://cukaivault.my
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Production Server
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          APP_DIR: ${{ secrets.APP_DIR }}   # e.g. /var/www/cukaivault
+        run: |
+          ssh $SERVER_USER@$SERVER_HOST <<ENDSSH
+            set -e
+
+            echo "🚀 Starting CukaiVault Deployment..."
+            cd ${APP_DIR:-/var/www/cukaivault}
+
+            # Pull latest code
+            echo "📥 Pulling latest code..."
+            git pull origin main
+
+            # Backup SQLite DB before deployment
+            echo "💾 Backing up database..."
+            if [ -f "/var/lib/docker/volumes/cukaivault_cukaivault_db/_data/prod.db" ]; then
+              TIMESTAMP=\$(date +%Y%m%d_%H%M%S)
+              cp /var/lib/docker/volumes/cukaivault_cukaivault_db/_data/prod.db \
+                 /var/www/cukaivault/backups/prod.db.\$TIMESTAMP
+              # Keep only last 5 backups
+              ls -t /var/www/cukaivault/backups/prod.db.* 2>/dev/null | tail -n +6 | xargs -r rm -f
+            fi
+
+            # Build and restart containers
+            echo "🐳 Building and restarting containers..."
+            docker compose pull --ignore-buildable || true
+            docker compose up -d --build --remove-orphans
+
+            # Clean up old images
+            docker image prune -f
+
+            echo "✅ Deployment completed"
+          ENDSSH
+
+      - name: Health Check
+        run: |
+          echo "⏳ Waiting for app to start..."
+          sleep 10
+
+          HEALTH_URL="https://cukaivault.my"
+          echo "🔍 Checking health at: $HEALTH_URL"
+
+          for i in 1 2 3; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ Health check PASSED (HTTP $response)"
+              break
+            fi
+            echo "⚠️ Attempt $i: HTTP $response — retrying in 10s..."
+            sleep 10
+          done
+
+          if [ "$response" != "200" ]; then
+            echo "❌ Health check FAILED after 3 attempts (HTTP $response)"
+            exit 1
+          fi
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "=================================================="
+          echo "🧾 CUKAIVAULT DEPLOYMENT"
+          echo "=================================================="
+          echo "Status:      ${{ job.status }}"
+          echo "Branch:      main"
+          echo "Commit:      ${{ github.sha }}"
+          echo "Deployed by: ${{ github.actor }}"
+          echo "Timestamp:   $(date)"
+          echo "=================================================="
+
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deployment successful!"
+            echo "🌐 https://cukaivault.my"
+          else
+            echo "❌ Deployment failed! Check logs above."
+          fi
