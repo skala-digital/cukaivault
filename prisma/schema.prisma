@@ -1,5 +1,6 @@
 // CukaiVault Prisma Schema
-// Local dev: SQLite — switch prisma.config.ts url to mysql:// for production
+// Prisma 7 uses prisma.config.ts for datasource URL (for migrations)
+// Runtime connection is configured in src/lib/prisma.ts via adapter
 
 generator client {
   provider = "prisma-client-js"
