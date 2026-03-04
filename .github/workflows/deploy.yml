@@ -33,6 +33,10 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           APP_DIR: ${{ secrets.APP_DIR }}   # e.g. /var/www/cukaivault
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
         run: |
           ssh $SERVER_USER@$SERVER_HOST <<ENDSSH
             set -e
@@ -44,20 +48,33 @@ jobs:
             echo "📥 Pulling latest code..."
             git pull origin main
 
+            # Update environment variables from GitHub Secrets
+            echo "🔐 Updating environment variables..."
+            sed -i 's|^GEMINI_API_KEY=.*|GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}|' .env.production
+            sed -i 's|^GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}|' .env.production
+            sed -i 's|^GOOGLE_CLIENT_SECRET=.*|GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}|' .env.production
+            sed -i 's|^AUTH_SECRET=.*|AUTH_SECRET=${{ secrets.AUTH_SECRET }}|' .env.production
+
             # Backup SQLite DB before deployment
             echo "💾 Backing up database..."
+            mkdir -p backups
             if [ -f "/var/lib/docker/volumes/cukaivault_cukaivault_db/_data/prod.db" ]; then
               TIMESTAMP=\$(date +%Y%m%d_%H%M%S)
               cp /var/lib/docker/volumes/cukaivault_cukaivault_db/_data/prod.db \
-                 /var/www/cukaivault/backups/prod.db.\$TIMESTAMP
+                 backups/prod.db.\$TIMESTAMP
               # Keep only last 5 backups
-              ls -t /var/www/cukaivault/backups/prod.db.* 2>/dev/null | tail -n +6 | xargs -r rm -f
+              ls -t backups/prod.db.* 2>/dev/null | tail -n +6 | xargs -r rm -f
             fi
 
             # Build and restart containers
             echo "🐳 Building and restarting containers..."
             docker compose pull --ignore-buildable || true
             docker compose up -d --build --remove-orphans
+
+            # Wait for containers to be healthy
+            echo "⏳ Waiting for containers..."
+            sleep 10
+            docker compose ps
 
             # Clean up old images
             docker image prune -f

@@ -48,6 +48,10 @@ ocr/*.pyc
 # SQLite database (dev only)
 prisma/dev.db
 prisma/dev.db-journal
+
+# Database backups (production)
+backups/
+*.db.2*
 next-env.d.ts
 
 /src/generated/prisma

@@ -5,11 +5,17 @@ RUN apk add --no-cache libc6-compat python3 make g++
 
 WORKDIR /app
 
-COPY package.json ./
-# Copy prisma schema so postinstall (prisma generate) succeeds
+# Copy package files (including lock file for faster installs)
+COPY package*.json ./
+
+# Copy Prisma config and schema so postinstall (prisma generate) succeeds
+COPY prisma.config.mjs ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
 
-RUN npm install
+# Use npm ci if lock file exists, otherwise npm install
+# Mount npm cache to speed up subsequent builds
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # ── Stage 2: Build ────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
@@ -17,16 +23,25 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
+
+# Copy Prisma files first (changes less frequently)
+COPY prisma.config.mjs ./
+COPY prisma ./prisma
+
+# Copy application code
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 # Set a dummy DATABASE_URL for build time only (actual URL set at runtime)
 ENV DATABASE_URL="file:./prisma/dev.db"
 
-# Generate Prisma client before building
-RUN npx prisma generate
+# Generate Prisma client before building (cache mount for faster regeneration)
+RUN --mount=type=cache,target=/root/.npm \
+    npx prisma generate
 
-RUN npm run build
+# Build Next.js (cache mount for Next.js build cache)
+RUN --mount=type=cache,target=/app/.next/cache \
+    npm run build
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
 FROM node:20-alpine AS runner
@@ -48,7 +63,8 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/next.config.ts ./
-# Prisma schema (migrations use it)
+# Prisma config and schema (migrations use them)
+COPY --from=builder /app/prisma.config.mjs ./
 COPY --from=builder /app/prisma ./prisma
 # Entrypoint: runs migrations then starts server
 COPY docker-entrypoint.sh ./

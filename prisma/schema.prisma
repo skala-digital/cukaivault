@@ -1,5 +1,5 @@
 // CukaiVault Prisma Schema
-// Prisma 7 uses prisma.config.ts for datasource URL (for migrations)
+// Prisma 7 uses prisma.config.mjs for datasource URL (for migrations)
 // Runtime connection is configured in src/lib/prisma.ts via adapter
 
 generator client {
