@@ -20,6 +20,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
+# Set a dummy DATABASE_URL for build time only (actual URL set at runtime)
+ENV DATABASE_URL="file:./prisma/dev.db"
+
+# Generate Prisma client before building
+RUN npx prisma generate
 
 RUN npm run build
 
@@ -43,9 +48,8 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/next.config.ts ./
-# Prisma schema + generated client
+# Prisma schema (migrations use it)
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/src/generated ./src/generated
 # Entrypoint: runs migrations then starts server
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh

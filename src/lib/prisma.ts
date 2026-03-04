@@ -1,18 +1,13 @@
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaClient } from "@/generated/prisma/client";
-import path from "path";
-
-const DB_PATH =
-  process.env.DATABASE_URL?.replace("file:", "") ??
-  path.join(process.cwd(), "prisma", "dev.db");
+import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
 function createPrismaClient() {
-  const adapter = new PrismaBetterSqlite3({ url: DB_PATH });
-  return new PrismaClient({ adapter });
+  return new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  });
 }
 
 // Attach to globalThis in development to prevent exhausting connections on HMR.

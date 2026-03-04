@@ -1,8 +1,12 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-import { prisma } from "@/lib/prisma";
 
 const ADMIN_EMAILS = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim()) || ['zarulizham97@gmail.com'];
+
+// Lazy-load Prisma to avoid Edge Runtime issues in middleware
+function getPrisma() {
+  return require("@/lib/prisma").prisma;
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -21,6 +25,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async signIn({ user, account, profile }) {
       if (!user.email) return false;
+      
+      const prisma = getPrisma();
       
       // Determine if user should be admin
       const isAdmin = ADMIN_EMAILS.includes(user.email);
