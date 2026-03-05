@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/cukaivault
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build:
@@ -41,7 +41,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,prefix={{branch}}-
+            type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push cukaivault image
@@ -63,7 +63,9 @@ jobs:
           context: ./ocr
           file: ./ocr/Dockerfile.ocr
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-ocr:${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-ocr:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-ocr:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -133,12 +135,12 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull pre-built images (MUCH FASTER than building)
-            echo "📦 Pulling pre-built images..."
-            export IMAGE_TAG="${IMAGE_TAG}"
-            docker pull ghcr.io/${{ github.repository }}/cukaivault:main-\${IMAGE_TAG}
-            docker pull ghcr.io/${{ github.repository }}/cukaivault-ocr:\${IMAGE_TAG}
+            echo "📦 Pulling pre-built images...":sha-\${IMAGE_TAG}
+            docker pull ghcr.io/${{ github.repository }}-ocr:sha-\${IMAGE_TAG}
 
             # Tag images for docker-compose
+            docker tag ghcr.io/${{ github.repository }}:sha-\${IMAGE_TAG} cukaivault-cukaivault:latest
+            docker tag ghcr.io/${{ github.repository }}-ocr:sha-
             docker tag ghcr.io/${{ github.repository }}/cukaivault:main-\${IMAGE_TAG} cukaivault-cukaivault:latest
             docker tag ghcr.io/${{ github.repository }}/cukaivault-ocr:\${IMAGE_TAG} cukaivault-cukaivault-ocr:latest
             
