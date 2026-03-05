@@ -11,6 +11,15 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Loader2, RefreshCw, Users, FileText, LogOut } from "lucide-react";
 
+// Client-safe utility function
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
+
 interface SyncLog {
   id: string;
   year: number;
@@ -39,8 +48,16 @@ export default function AdminDashboard() {
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [taxYearStatus, setTaxYearStatus] = useState<{ count: number; taxYears: any[] } | null>(null);
+  const [taxYearStatus, setTaxYearStatus] = useState<{
+    count: number;
+    taxYears: any[];
+  } | null>(null);
   const [seedingTaxYears, setSeedingTaxYears] = useState(false);
+  const [stats, setStats] = useState<{
+    users: number;
+    receipts: number;
+    dbSize: number;
+  } | null>(null);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -57,6 +74,19 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
+      // Fetch stats (this also verifies admin role)
+      const statsRes = await fetch("/api/admin/stats");
+      if (statsRes.status === 401) {
+        // Not an admin, redirect to dashboard
+        toast.error("Access denied: Admin privileges required");
+        router.push("/dashboard");
+        return;
+      }
+      if (statsRes.ok) {
+        const data = await statsRes.json();
+        setStats(data);
+      }
+
       // Fetch tax year status
       const taxYearRes = await fetch("/api/admin/seed-tax-years");
       if (taxYearRes.ok) {
@@ -130,8 +160,8 @@ export default function AdminDashboard() {
 
       if (res.ok) {
         toast.success("Tax years created!", {
-          description: data.scrapedFromLHDN 
-            ? "Synced with latest LHDN data" 
+          description: data.scrapedFromLHDN
+            ? "Synced with latest LHDN data"
             : "Using default values (LHDN sync failed)",
         });
         fetchData(); // Refresh status
@@ -181,6 +211,53 @@ export default function AdminDashboard() {
 
       {/* Main Content */}
       <div className="p-6 max-w-7xl mx-auto">
+        {/* Stats Dashboard */}
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <Card className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    Registered Users
+                  </p>
+                  <p className="text-3xl font-bold">
+                    {stats.users.toLocaleString()}
+                  </p>
+                </div>
+                <div className="text-4xl">👥</div>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    Total Receipts
+                  </p>
+                  <p className="text-3xl font-bold">
+                    {stats.receipts.toLocaleString()}
+                  </p>
+                </div>
+                <div className="text-4xl">🧾</div>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    Database Size
+                  </p>
+                  <p className="text-3xl font-bold">
+                    {formatBytes(stats.dbSize)}
+                  </p>
+                </div>
+                <div className="text-4xl">🗄️</div>
+              </div>
+            </Card>
+          </div>
+        )}
+
         <Tabs defaultValue="sync" className="space-y-6">
           <TabsList>
             <TabsTrigger value="sync">
@@ -208,11 +285,12 @@ export default function AdminDashboard() {
                       ⚠️ No Tax Years Configured
                     </h3>
                     <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-4">
-                      Users can login but cannot use the system until tax years are created.
-                      Click the button below to initialize tax years and sync LHDN compliance data.
+                      Users can login but cannot use the system until tax years
+                      are created. Click the button below to initialize tax
+                      years and sync LHDN compliance data.
                     </p>
-                    <Button 
-                      onClick={handleSeedTaxYears} 
+                    <Button
+                      onClick={handleSeedTaxYears}
                       disabled={seedingTaxYears}
                       variant="default"
                       size="lg"
@@ -238,8 +316,9 @@ export default function AdminDashboard() {
                   ✅ Tax Years Configured
                 </h3>
                 <p className="text-sm text-green-800 dark:text-green-200">
-                  {taxYearStatus.count} tax {taxYearStatus.count === 1 ? 'year' : 'years'} available: {' '}
-                  {taxYearStatus.taxYears.map(ty => ty.year).join(', ')}
+                  {taxYearStatus.count} tax{" "}
+                  {taxYearStatus.count === 1 ? "year" : "years"} available:{" "}
+                  {taxYearStatus.taxYears.map((ty) => ty.year).join(", ")}
                 </p>
               </Card>
             )}

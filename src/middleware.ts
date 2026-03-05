@@ -13,7 +13,8 @@ export default auth((req) => {
     });
   }
 
-  // Admin routes protection
+  // Admin routes protection - session check only
+  // Actual admin role verification happens in the admin page component
   if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
     if (!req.auth) {
       const loginUrl = new URL('/admin/login', req.url);

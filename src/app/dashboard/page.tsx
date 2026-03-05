@@ -55,22 +55,21 @@ export default function DashboardPage() {
 
   const [incomeInput, setIncomeInput] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
   const [availableYears, setAvailableYears] = useState<
     Array<{ id: string; year: number; filingEndDate: string }>
   >([]);
   const incomeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-restore session from localStorage or fetch from server session
+  // Fetch user data from session on mount
   useEffect(() => {
-    if (user) return; // Already loaded
+    if (user) {
+      setLoading(false);
+      return;
+    }
 
-    const userId = localStorage.getItem("cg_user_id");
-
-    // Try to fetch from session first if no localStorage
-    const endpoint = userId ? `/api/user/${userId}` : `/api/user/me`;
-
-    fetch(endpoint)
+    fetch("/api/user/me")
       .then((r) => {
         if (!r.ok) throw new Error("Failed to fetch user");
         return r.json();
@@ -79,11 +78,6 @@ export default function DashboardPage() {
         if (!u) {
           router.replace("/");
           return;
-        }
-
-        // Store user ID in localStorage for future visits
-        if (!userId) {
-          localStorage.setItem("cg_user_id", u.id);
         }
 
         setUser({
@@ -115,6 +109,7 @@ export default function DashboardPage() {
             createdAt: String(r.createdAt),
           })),
         );
+        setLoading(false);
       })
       .catch((err) => {
         console.error("Failed to load user:", err);
@@ -256,6 +251,20 @@ export default function DashboardPage() {
         )
       : 0;
 
+  // Show loading state while fetching user data
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-sm text-muted-foreground">
+            Loading your tax data...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* ── Header ─────────────────────────────────────────── */}
@@ -305,9 +314,14 @@ export default function DashboardPage() {
             variant="ghost"
             size="sm"
             className="text-xs text-muted-foreground"
-            onClick={() => {
-              localStorage.removeItem("cg_user_id");
-              router.replace("/");
+            onClick={async () => {
+              try {
+                await fetch("/api/auth/signout", { method: "POST" });
+                router.push("/");
+              } catch (error) {
+                console.error("Sign out failed:", error);
+                toast.error("Failed to sign out");
+              }
             }}
           >
             Sign out
