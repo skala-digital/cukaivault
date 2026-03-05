@@ -66,18 +66,27 @@ jobs:
               ls -t backups/prod.db.* 2>/dev/null | tail -n +6 | xargs -r rm -f
             fi
 
-            # Build and restart containers
-            echo "🐳 Building and restarting containers..."
-            docker compose pull --ignore-buildable || true
-            docker compose up -d --build --remove-orphans
+            # Enable Docker BuildKit for layer caching
+            echo "⚡ Building with layer caching..."
+            export DOCKER_BUILDKIT=1
+            export COMPOSE_DOCKER_CLI_BUILD=1
+            
+            # Build with inline cache (reuses previous build layers)
+            docker compose build \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              --progress=plain
+            
+            # Start containers
+            echo "🐳 Starting containers..."
+            docker compose up -d --remove-orphans
 
             # Wait for containers to be healthy
             echo "⏳ Waiting for containers..."
-            sleep 10
+            sleep 15
             docker compose ps
 
-            # Clean up old images
-            docker image prune -f
+            # Clean up old images (keep some for rollback)
+            docker image prune -af --filter "until=24h"
 
             echo "✅ Deployment completed"
           ENDSSH
