@@ -135,14 +135,14 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull pre-built images (MUCH FASTER than building)
-            echo "📦 Pulling pre-built images...":sha-\${IMAGE_TAG}
+            echo "📦 Pulling pre-built images..."
+            export IMAGE_TAG="${IMAGE_TAG}"
+            docker pull ghcr.io/${{ github.repository }}:sha-\${IMAGE_TAG}
             docker pull ghcr.io/${{ github.repository }}-ocr:sha-\${IMAGE_TAG}
 
             # Tag images for docker-compose
             docker tag ghcr.io/${{ github.repository }}:sha-\${IMAGE_TAG} cukaivault-cukaivault:latest
-            docker tag ghcr.io/${{ github.repository }}-ocr:sha-
-            docker tag ghcr.io/${{ github.repository }}/cukaivault:main-\${IMAGE_TAG} cukaivault-cukaivault:latest
-            docker tag ghcr.io/${{ github.repository }}/cukaivault-ocr:\${IMAGE_TAG} cukaivault-cukaivault-ocr:latest
+            docker tag ghcr.io/${{ github.repository }}-ocr:sha-\${IMAGE_TAG} cukaivault-cukaivault-ocr:latest
             
             # Start containers (no build, just use pre-built images)
             echo "🐳 Starting containers..."
