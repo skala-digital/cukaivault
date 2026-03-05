@@ -61,22 +61,31 @@ export default function DashboardPage() {
   >([]);
   const incomeDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-restore session from localStorage
+  // Auto-restore session from localStorage or fetch from server session
   useEffect(() => {
-    const userId = localStorage.getItem("cg_user_id");
-    if (!userId) {
-      router.replace("/");
-      return;
-    }
-    if (user) return;
+    if (user) return; // Already loaded
 
-    fetch(`/api/user/${userId}`)
-      .then((r) => r.json())
+    const userId = localStorage.getItem("cg_user_id");
+
+    // Try to fetch from session first if no localStorage
+    const endpoint = userId ? `/api/user/${userId}` : `/api/user/me`;
+
+    fetch(endpoint)
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch user");
+        return r.json();
+      })
       .then(({ user: u }) => {
         if (!u) {
           router.replace("/");
           return;
         }
+
+        // Store user ID in localStorage for future visits
+        if (!userId) {
+          localStorage.setItem("cg_user_id", u.id);
+        }
+
         setUser({
           id: u.id,
           phone: u.phone,
@@ -106,6 +115,11 @@ export default function DashboardPage() {
             createdAt: String(r.createdAt),
           })),
         );
+      })
+      .catch((err) => {
+        console.error("Failed to load user:", err);
+        // If session fetch fails, redirect to login
+        router.replace("/");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -305,16 +319,15 @@ export default function DashboardPage() {
       {availableYears.length === 0 && (
         <div className="bg-yellow-50 dark:bg-yellow-950/20 border-b border-yellow-200 dark:border-yellow-800 px-4 sm:px-6 py-4">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 mt-0.5">
-              ⚠️
-            </div>
+            <div className="flex-shrink-0 mt-0.5">⚠️</div>
             <div className="flex-1">
               <h3 className="font-semibold text-yellow-900 dark:text-yellow-100 text-sm mb-1">
                 System Not Configured
               </h3>
               <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                Tax years haven't been configured yet. You can view this page, but cannot calculate taxes 
-                or track receipts until the admin initializes the system. Please contact support at{" "}
+                Tax years haven't been configured yet. You can view this page,
+                but cannot calculate taxes or track receipts until the admin
+                initializes the system. Please contact support at{" "}
                 <span className="font-medium">zarulizham97@gmail.com</span>
               </p>
             </div>
