@@ -39,6 +39,8 @@ export default function AdminDashboard() {
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [taxYearStatus, setTaxYearStatus] = useState<{ count: number; taxYears: any[] } | null>(null);
+  const [seedingTaxYears, setSeedingTaxYears] = useState(false);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -55,6 +57,13 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
+      // Fetch tax year status
+      const taxYearRes = await fetch("/api/admin/seed-tax-years");
+      if (taxYearRes.ok) {
+        const data = await taxYearRes.json();
+        setTaxYearStatus(data);
+      }
+
       // Fetch sync logs
       const logsRes = await fetch("/api/admin/sync-logs");
       if (logsRes.ok) {
@@ -108,6 +117,38 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleSeedTaxYears = async () => {
+    setSeedingTaxYears(true);
+
+    try {
+      const res = await fetch("/api/admin/seed-tax-years", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.success("Tax years created!", {
+          description: data.scrapedFromLHDN 
+            ? "Synced with latest LHDN data" 
+            : "Using default values (LHDN sync failed)",
+        });
+        fetchData(); // Refresh status
+      } else {
+        toast.error("Failed to create tax years", {
+          description: data.details || data.message,
+        });
+      }
+    } catch (error) {
+      toast.error("Network error", {
+        description: "Could not create tax years",
+      });
+    } finally {
+      setSeedingTaxYears(false);
+    }
+  };
+
   const handleLogout = () => {
     signOut({ callbackUrl: "/admin/login" });
   };
@@ -158,6 +199,51 @@ export default function AdminDashboard() {
 
           {/* Sync Tab */}
           <TabsContent value="sync">
+            {/* Tax Year Status Warning */}
+            {taxYearStatus && taxYearStatus.count === 0 && (
+              <Card className="p-6 mb-6 border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-yellow-900 dark:text-yellow-100 mb-2">
+                      ⚠️ No Tax Years Configured
+                    </h3>
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-4">
+                      Users can login but cannot use the system until tax years are created.
+                      Click the button below to initialize tax years and sync LHDN compliance data.
+                    </p>
+                    <Button 
+                      onClick={handleSeedTaxYears} 
+                      disabled={seedingTaxYears}
+                      variant="default"
+                      size="lg"
+                    >
+                      {seedingTaxYears ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          Creating Tax Years...
+                        </>
+                      ) : (
+                        "🚀 Initialize Tax Years & Sync LHDN"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Tax Year Status Info */}
+            {taxYearStatus && taxYearStatus.count > 0 && (
+              <Card className="p-6 mb-6 border-green-500/50 bg-green-50 dark:bg-green-950/20">
+                <h3 className="text-lg font-semibold text-green-900 dark:text-green-100 mb-2">
+                  ✅ Tax Years Configured
+                </h3>
+                <p className="text-sm text-green-800 dark:text-green-200">
+                  {taxYearStatus.count} tax {taxYearStatus.count === 1 ? 'year' : 'years'} available: {' '}
+                  {taxYearStatus.taxYears.map(ty => ty.year).join(', ')}
+                </p>
+              </Card>
+            )}
+
             <Card className="p-6">
               <h2 className="text-xl font-semibold mb-2">
                 Sync LHDN Tax Rules

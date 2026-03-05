@@ -116,6 +116,12 @@ export default function DashboardPage() {
       .then((r) => r.json())
       .then(({ years }) => {
         setAvailableYears(years || []);
+        if (!years || years.length === 0) {
+          toast.warning("Tax years not configured", {
+            description: "Please contact admin to initialize the system",
+            duration: 10000,
+          });
+        }
       });
   }, []);
 
@@ -251,13 +257,17 @@ export default function DashboardPage() {
               className="appearance-none text-sm font-semibold bg-card border border-input rounded-md px-3 py-1.5 pr-8 cursor-pointer hover:bg-accent transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
               value={user.currentTaxYearId || ""}
               onChange={(e) => handleYearSwitch(e.target.value)}
-              disabled={syncing}
+              disabled={syncing || availableYears.length === 0}
             >
-              {availableYears.map((y) => (
-                <option key={y.id} value={y.id}>
-                  {y.year}
-                </option>
-              ))}
+              {availableYears.length === 0 ? (
+                <option value="">No Tax Years</option>
+              ) : (
+                availableYears.map((y) => (
+                  <option key={y.id} value={y.id}>
+                    {y.year}
+                  </option>
+                ))
+              )}
             </select>
             <ChevronRight className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none rotate-90" />
           </div>
@@ -290,6 +300,27 @@ export default function DashboardPage() {
           </Button>
         </div>
       </header>
+
+      {/* ── Warning: No Tax Years ──────────────────────────── */}
+      {availableYears.length === 0 && (
+        <div className="bg-yellow-50 dark:bg-yellow-950/20 border-b border-yellow-200 dark:border-yellow-800 px-4 sm:px-6 py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 mt-0.5">
+              ⚠️
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-yellow-900 dark:text-yellow-100 text-sm mb-1">
+                System Not Configured
+              </h3>
+              <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                Tax years haven't been configured yet. You can view this page, but cannot calculate taxes 
+                or track receipts until the admin initializes the system. Please contact support at{" "}
+                <span className="font-medium">zarulizham97@gmail.com</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Two-column layout ──────────────────────────────── */}
       <div className="flex-1 grid lg:grid-cols-[minmax(380px,1fr)_minmax(360px,480px)]">

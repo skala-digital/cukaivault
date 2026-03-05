@@ -1,12 +1,20 @@
-"use client";
-
-import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { signIn, auth } from "@/auth";
+import { redirect } from "next/navigation";
 
-export default function LoginPage() {
-  const handleGoogleLogin = () => {
-    signIn("google", { callbackUrl: "/dashboard" });
-  };
+async function handleGoogleLogin() {
+  "use server";
+  await signIn("google", { redirectTo: "/dashboard" });
+}
+
+export default async function LoginPage() {
+  // Check if user is already authenticated
+  const session = await auth();
+  
+  // If logged in, redirect to dashboard
+  if (session?.user) {
+    redirect("/dashboard");
+  }
 
   return (
     <main className="flex flex-col min-h-screen px-6 pt-16 pb-10">
@@ -30,11 +38,12 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <Button
-          onClick={handleGoogleLogin}
-          className="w-full h-12 text-base"
-          variant="outline"
-        >
+        <form action={handleGoogleLogin}>
+          <Button
+            type="submit"
+            className="w-full h-12 text-base"
+            variant="outline"
+          >
           <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
             <path
               fill="#4285F4"
@@ -55,6 +64,7 @@ export default function LoginPage() {
           </svg>
           Continue with Google
         </Button>
+        </form>
       </div>
 
       <p className="text-center text-xs text-muted-foreground mt-auto pt-8">

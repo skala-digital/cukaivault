@@ -9,6 +9,12 @@ function getPrisma() {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true, // ← CRITICAL: Required for production behind proxy
+  secret: process.env.AUTH_SECRET,
+  session: {
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -22,20 +28,34 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
     })
   ],
+  cookies: {
+    sessionToken: {
+      name: `__Secure-next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: true // HTTPS only
+      }
+    }
+  },
+  pages: {
+    signIn: '/'
+  },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (!user.email) return false;
-      
+
       const prisma = getPrisma();
-      
+
       // Determine if user should be admin
       const isAdmin = ADMIN_EMAILS.includes(user.email);
-      
+
       // Check if user exists
       let dbUser = await prisma.user.findUnique({
         where: { email: user.email }
       });
-      
+
       // Auto-register user if doesn't exist
       if (!dbUser) {
         // Get current active tax year for default assignment
@@ -43,7 +63,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           where: { isActive: true },
           orderBy: { year: 'desc' }
         });
-        
+
+        // Allow registration even without tax years (user can still login)
         dbUser = await prisma.user.create({
           data: {
             phone: `+60-${Date.now()}`, // Placeholder phone
@@ -55,10 +76,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             employmentType: 'EMPLOYED',
             grossIncome: 0,
             totalReliefs: 0,
-            currentTaxYearId: currentTaxYear?.id || ''
+            currentTaxYearId: currentTaxYear?.id || null // Allow null if no tax years
           }
         });
-        console.log(`✅ User registered: ${user.email} (admin: ${isAdmin})`);
+
+        if (!currentTaxYear) {
+          console.log(`⚠️ User registered without tax year: ${user.email} - Admin needs to sync tax years`);
+        } else {
+          console.log(`✅ User registered: ${user.email} (admin: ${isAdmin})`);
+        }
       } else {
         // Update admin status if needed
         if (dbUser.isAdmin !== isAdmin) {
@@ -76,23 +102,37 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           });
         }
       }
-      
+
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.email = user.email;
+        token.sub = user.id;
       }
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
+      if (session.user && token.email) {
         session.user.email = token.email as string;
+        session.user.id = token.sub as string;
       }
       return session;
+    },
+    async redirect({ url, baseUrl }) {
+      // After successful login, always redirect to dashboard
+      // unless a specific authenticated route is requested
+      if (url.startsWith(baseUrl)) {
+        const pathname = new URL(url).pathname;
+        // If redirecting to homepage, go to dashboard instead
+        if (pathname === '/' || pathname === '') {
+          return `${baseUrl}/dashboard`;
+        }
+        // Allow other authenticated routes
+        return url;
+      }
+      // External URLs default to dashboard
+      return `${baseUrl}/dashboard`;
     }
-  },
-  pages: {
-    signIn: '/'
   }
 });
