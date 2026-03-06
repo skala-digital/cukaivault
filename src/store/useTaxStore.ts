@@ -14,6 +14,9 @@ export interface ReceiptItem {
   category: string;
   imageUrl?: string | null;
   isVerified: boolean;
+  confidence?: number | null;
+  ocrMethod?: string | null;
+  needsVerification?: boolean;
   createdAt: string;
 }
 

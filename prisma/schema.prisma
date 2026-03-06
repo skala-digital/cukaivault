@@ -77,6 +77,13 @@ model Receipt {
   category   String   // LHDN Relief category e.g. LIFESTYLE, MEDICAL
   imageUrl   String?
   isVerified Boolean  @default(false)
+  
+  // OCR metadata for verification workflow
+  confidence       Float?  // AI confidence score 0.0-1.0
+  ocrMethod        String? // AI | TESSERACT | MANUAL
+  rawOcrText       String? // Extracted text for audit
+  needsVerification Boolean @default(false) // Flag for review queue
+  
   createdAt  DateTime @default(now())
 }
 
@@ -89,16 +96,6 @@ model Transaction {
   type            String   // ZAKAT_HARTA | DONATION_NGO
   status          String   @default("INITIATED")
   createdAt       DateTime @default(now())
-}
-
-model VaultEntry {
-  id         String   @id @default(uuid())
-  title      String
-  url        String   @unique
-  summary    String
-  source     String   @default("LHDN")     // LHDN | HASIL | OTHER
-  category   String   @default("GENERAL")  // GENERAL | RELIEF | RATE | DEADLINE
-  scrapedAt  DateTime @default(now())
 }
 
 // ══════════════════════════════════════════════════════════════

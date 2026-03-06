@@ -6,8 +6,10 @@ import { toast } from "sonner";
 import { CircularMeter } from "@/components/CircularMeter";
 import { ReceiptUpload } from "@/components/ReceiptUpload";
 import { TaxProfileSheet } from "@/components/TaxProfileSheet";
+import { ReceiptDetailsSheet } from "@/components/ReceiptDetailsSheet";
 import { ReliefTracker } from "@/components/ReliefTracker";
-import { VaultFeed } from "@/components/VaultFeed";
+import { ReliefSuggestions } from "@/components/ReliefSuggestions";
+import { TaxTimeline } from "@/components/TaxTimeline";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -28,6 +30,8 @@ import {
   PiggyBank,
   Baby,
   FileText,
+  AlertTriangle,
+  Filter,
 } from "lucide-react";
 
 /** Map receipt category → Lucide icon component */
@@ -57,6 +61,10 @@ export default function DashboardPage() {
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showOnlyUnverified, setShowOnlyUnverified] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState<
+    (typeof receipts)[0] | null
+  >(null);
   const [availableYears, setAvailableYears] = useState<
     Array<{ id: string; year: number; filingEndDate: string }>
   >([]);
@@ -106,6 +114,9 @@ export default function DashboardPage() {
             category: String(r.category),
             imageUrl: r.imageUrl as string | null,
             isVerified: Boolean(r.isVerified),
+            confidence: r.confidence as number | null,
+            ocrMethod: r.ocrMethod as string | null,
+            needsVerification: Boolean(r.needsVerification),
             createdAt: String(r.createdAt),
           })),
         );
@@ -173,6 +184,9 @@ export default function DashboardPage() {
           category: String(r.category),
           imageUrl: r.imageUrl as string | null,
           isVerified: Boolean(r.isVerified),
+          confidence: r.confidence as number | null,
+          ocrMethod: r.ocrMethod as string | null,
+          needsVerification: Boolean(r.needsVerification),
           createdAt: String(r.createdAt),
         })),
       );
@@ -204,6 +218,9 @@ export default function DashboardPage() {
         category: receipt.category,
         imageUrl: receipt.imageUrl,
         isVerified: receipt.isVerified,
+        confidence: receipt.confidence,
+        ocrMethod: receipt.ocrMethod,
+        needsVerification: receipt.needsVerification || false,
         createdAt: receipt.createdAt,
       });
       toast.success(`Receipt added: ${formatRM(Number(receipt.amount), 2)}`);
@@ -221,6 +238,77 @@ export default function DashboardPage() {
       toast.success("Receipt removed.");
     } catch {
       toast.error("Failed to delete receipt.");
+    }
+  };
+
+  const handleUpdateReceipt = async (
+    id: string,
+    updates: {
+      amount?: number;
+      category?: string;
+      isVerified?: boolean;
+      needsVerification?: boolean;
+    },
+  ) => {
+    try {
+      const res = await fetch(`/api/receipts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      const { receipt } = await res.json();
+
+      // Update local state
+      setReceipts(
+        receipts.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                amount:
+                  receipt.amount !== undefined
+                    ? Number(receipt.amount)
+                    : r.amount,
+                category:
+                  receipt.category !== undefined
+                    ? receipt.category
+                    : r.category,
+                isVerified:
+                  receipt.isVerified !== undefined
+                    ? receipt.isVerified
+                    : r.isVerified,
+                needsVerification:
+                  receipt.needsVerification !== undefined
+                    ? receipt.needsVerification
+                    : r.needsVerification,
+              }
+            : r,
+        ),
+      );
+
+      // Update selected receipt to show new values
+      if (selectedReceipt?.id === id) {
+        setSelectedReceipt({
+          ...selectedReceipt,
+          amount:
+            receipt.amount !== undefined
+              ? Number(receipt.amount)
+              : selectedReceipt.amount,
+          category:
+            receipt.category !== undefined
+              ? receipt.category
+              : selectedReceipt.category,
+          isVerified:
+            receipt.isVerified !== undefined
+              ? receipt.isVerified
+              : selectedReceipt.isVerified,
+          needsVerification:
+            receipt.needsVerification !== undefined
+              ? receipt.needsVerification
+              : selectedReceipt.needsVerification,
+        });
+      }
+    } catch {
+      throw new Error("Failed to update receipt");
     }
   };
 
@@ -463,22 +551,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ROW 2 — Donation / Zakat note */}
-            {!isSettled && actionAmount > 0 && (
-              <Card className="px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
-                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-0.5">
-                  {user.isMuslim ? "⚡ Zakat to Zero" : "💡 Donation Tier-Drop"}
-                </p>
-                <p className="text-sm text-amber-900 dark:text-amber-100">
-                  {user.isMuslim
-                    ? `Pay ${formatRM(zakatNeeded, 2)} in Zakat to offset your full tax.`
-                    : `Donate ${formatRM(donationNeeded, 2)} → drop to ${((summary?.targetBracketRate ?? 0) * 100).toFixed(0)}% bracket.`}
-                </p>
-              </Card>
-            )}
-
-            {/* ROW 3 — Annual income */}
-            <div className="space-y-1.5">
+            {/* ROW 3 — Annual income (moved above zakat-to-zero) */}
+            <div className="space-y-1.5 mb-4">
               <Label htmlFor="income" className="text-xs">
                 Annual Gross Income (RM)
               </Label>
@@ -492,6 +566,29 @@ export default function DashboardPage() {
                 className="h-10"
               />
             </div>
+
+            {/* ROW 2 — Donation / Zakat note */}
+            {!isSettled && actionAmount > 0 && (
+              <Card className="px-4 py-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-0.5">
+                  {user.isMuslim ? "⚡ Zakat to Zero" : "💡 Donation Tier-Drop"}
+                </p>
+                <p className="text-sm text-amber-900 dark:text-amber-100">
+                  {user.isMuslim
+                    ? `Pay ${formatRM(zakatNeeded, 2)} in Zakat to offset your full tax.`
+                    : `Donate ${formatRM(donationNeeded, 2)} → drop to ${((summary?.targetBracketRate ?? 0) * 100).toFixed(0)}% bracket.`}
+                </p>
+              </Card>
+            )}
+            {/* Tax Timeline - Filing Deadline */}
+            {availableYears.find((y) => y.id === user.currentTaxYearId) && (
+              <TaxTimeline
+                filingEndDate={
+                  availableYears.find((y) => y.id === user.currentTaxYearId)!
+                    .filingEndDate
+                }
+              />
+            )}
           </div>
         </div>
 
@@ -534,64 +631,135 @@ export default function DashboardPage() {
 
             {/* Receipts tab */}
             <TabsContent value="receipts" className="mt-4">
+              {/* Filter controls */}
+              {receipts.length > 0 && (
+                <div className="flex items-center justify-between mb-3">
+                  <Button
+                    variant={showOnlyUnverified ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowOnlyUnverified(!showOnlyUnverified)}
+                    className="gap-1.5 h-8 text-xs"
+                  >
+                    <Filter className="h-3 w-3" />
+                    {showOnlyUnverified ? "Show All" : "Needs Review"}
+                    {receipts.filter((r) => r.needsVerification).length > 0 && (
+                      <Badge
+                        variant="secondary"
+                        className="ml-1 text-[10px] py-0 px-1"
+                      >
+                        {receipts.filter((r) => r.needsVerification).length}
+                      </Badge>
+                    )}
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    {showOnlyUnverified
+                      ? "Showing unverified only"
+                      : `${receipts.length} total`}
+                  </p>
+                </div>
+              )}
+
               {receipts.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-10">
                   No receipts yet. Add one above.
                 </p>
+              ) : receipts.filter((r) =>
+                  showOnlyUnverified ? r.needsVerification : true,
+                ).length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-10">
+                  No unverified receipts. All clear! ✓
+                </p>
               ) : (
                 <div className="space-y-2">
-                  {receipts.map((r) => {
-                    const Icon = CATEGORY_ICONS[r.category] ?? FileText;
-                    return (
-                      <div
-                        key={r.id}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl border bg-card hover:bg-muted/30 transition-colors"
-                      >
-                        {/* Category icon bubble */}
-                        <div className="shrink-0 w-8 h-8 rounded-lg bg-primary/8 flex items-center justify-center">
-                          <Icon className="h-4 w-4 text-primary/70" />
-                        </div>
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-sm font-semibold tabular-nums">
-                              {formatRM(r.amount, 2)}
-                            </span>
-                            {r.isVerified && (
-                              <span className="text-[9px] text-green-600 font-medium">
-                                ✓
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-tight">
-                            {RELIEF_LABELS[r.category] ?? r.category}
-                            <span className="mx-1">·</span>
-                            {new Date(r.createdAt).toLocaleDateString("en-MY")}
-                          </p>
-                        </div>
-                        {/* Delete */}
-                        <button
-                          onClick={() => handleDeleteReceipt(r.id)}
-                          className="shrink-0 text-muted-foreground/50 hover:text-destructive transition-colors p-1 rounded"
-                          aria-label="Delete receipt"
+                  {receipts
+                    .filter((r) =>
+                      showOnlyUnverified ? r.needsVerification : true,
+                    )
+                    .map((r) => {
+                      const Icon = CATEGORY_ICONS[r.category] ?? FileText;
+                      return (
+                        <div
+                          key={r.id}
+                          onClick={() => setSelectedReceipt(r)}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-xl border bg-card hover:bg-muted/30 transition-colors cursor-pointer"
                         >
-                          <span className="text-base leading-none">×</span>
-                        </button>
-                      </div>
-                    );
-                  })}
+                          {/* Category icon bubble */}
+                          <div className="shrink-0 w-8 h-8 rounded-lg bg-primary/8 flex items-center justify-center">
+                            <Icon className="h-4 w-4 text-primary/70" />
+                          </div>
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                              <span className="text-sm font-semibold tabular-nums">
+                                {formatRM(r.amount, 2)}
+                              </span>
+                              {r.isVerified && (
+                                <span className="text-[9px] text-green-600 font-medium">
+                                  ✓
+                                </span>
+                              )}
+                              {r.needsVerification && (
+                                <AlertTriangle className="h-3 w-3 text-yellow-600" />
+                              )}
+                              {r.ocrMethod && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] h-4 px-1"
+                                >
+                                  {r.ocrMethod}
+                                </Badge>
+                              )}
+                              {r.confidence != null && r.confidence < 0.8 && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[9px] h-4 px-1 bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400"
+                                >
+                                  {Math.round(r.confidence * 100)}%
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-tight">
+                              {RELIEF_LABELS[r.category] ?? r.category}
+                              <span className="mx-1">·</span>
+                              {new Date(r.createdAt).toLocaleDateString(
+                                "en-MY",
+                              )}
+                            </p>
+                          </div>
+                          {/* Delete */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteReceipt(r.id);
+                            }}
+                            className="shrink-0 text-muted-foreground/50 hover:text-destructive transition-colors p-1 rounded"
+                            aria-label="Delete receipt"
+                          >
+                            <span className="text-base leading-none">×</span>
+                          </button>
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </TabsContent>
           </Tabs>
-
-          <Separator />
-          <VaultFeed />
         </div>
       </div>
 
       {/* Profile sheet — controlled from profile summary row */}
       <TaxProfileSheet open={profileOpen} onOpenChange={setProfileOpen} />
+
+      {/* Receipt details sheet */}
+      <ReceiptDetailsSheet
+        receipt={selectedReceipt}
+        onClose={() => setSelectedReceipt(null)}
+        onUpdate={handleUpdateReceipt}
+        onDelete={async (id) => {
+          await handleDeleteReceipt(id);
+          setSelectedReceipt(null);
+        }}
+      />
     </div>
   );
 }
