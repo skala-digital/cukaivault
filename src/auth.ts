@@ -37,7 +37,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         httpOnly: true,
         sameSite: 'lax',
         path: '/',
-        secure: process.env.NODE_ENV === 'production' // HTTPS only in production
+        secure: process.env.NODE_ENV === 'production',
+        domain: process.env.NODE_ENV === 'production' ? process.env.AUTH_TRUST_HOST : undefined
       }
     }
   },
@@ -122,18 +123,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session;
     },
     async redirect({ url, baseUrl }) {
-      // After successful login, always redirect to dashboard
-      // unless a specific authenticated route is requested
+      console.log('🔄 Auth redirect:', { url, baseUrl });
+      
+      // Handle relative URLs
+      if (url.startsWith('/')) {
+        const fullUrl = new URL(url, baseUrl);
+        url = fullUrl.toString();
+      }
+      
+      // If URL is within our domain
       if (url.startsWith(baseUrl)) {
         const pathname = new URL(url).pathname;
-        // If redirecting to homepage, go to dashboard instead
-        if (pathname === '/' || pathname === '') {
+        
+        // Prevent infinite redirects - if already on dashboard, stay there
+        if (pathname === '/dashboard') {
+          return url;
+        }
+        
+        // If redirecting to homepage or login, go to dashboard instead
+        if (pathname === '/' || pathname === '' || pathname === '/login') {
           return `${baseUrl}/dashboard`;
         }
-        // Allow other authenticated routes
+        
+        // Allow other authenticated routes (admin, etc.)
         return url;
       }
-      // External URLs default to dashboard
+      
+      // External URLs or fallback - go to dashboard
       return `${baseUrl}/dashboard`;
     }
   }

@@ -77,16 +77,31 @@ export default function DashboardPage() {
       return;
     }
 
+    console.log("📡 Dashboard: Fetching user data...");
     fetch("/api/user/me")
       .then((r) => {
-        if (!r.ok) throw new Error("Failed to fetch user");
+        console.log("📡 Dashboard: API response status:", r.status);
+        if (r.status === 401) {
+          console.log("📡 Dashboard: Unauthorized, redirecting to login");
+          router.replace("/");
+          return null;
+        }
+        if (!r.ok) {
+          throw new Error(`Failed to fetch user: ${r.status} ${r.statusText}`);
+        }
         return r.json();
       })
-      .then(({ user: u }) => {
+      .then((data) => {
+        if (!data) return; // Handle 401 case above
+
+        const { user: u } = data;
         if (!u) {
+          console.log("📡 Dashboard: No user data, redirecting to login");
           router.replace("/");
           return;
         }
+
+        console.log("📡 Dashboard: User loaded successfully:", u.email);
 
         setUser({
           id: u.id,
@@ -123,9 +138,22 @@ export default function DashboardPage() {
         setLoading(false);
       })
       .catch((err) => {
-        console.error("Failed to load user:", err);
-        // If session fetch fails, redirect to login
-        router.replace("/");
+        console.error("📡 Dashboard: Failed to load user:", err);
+
+        // Don't redirect immediately - might be temporary network issue
+        // Show error state instead and let middleware handle auth redirects
+        setLoading(false);
+        toast.error("Failed to load user data. Please refresh the page.");
+
+        // Only redirect on repeated failures after a delay
+        setTimeout(() => {
+          if (!user) {
+            console.log(
+              "📡 Dashboard: Still no user after delay, redirecting to login",
+            );
+            router.replace("/");
+          }
+        }, 3000);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
